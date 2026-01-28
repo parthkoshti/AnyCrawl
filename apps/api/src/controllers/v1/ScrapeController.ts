@@ -78,7 +78,7 @@ export class ScrapeController {
                 return;
             }
 
-            // Set credits used for this scrape request (1 credit per scrape)
+            // Base credit: 1 per scrape
             req.creditsUsed = defaultPrice + 1;
             // Extra credits when structured extraction is requested via json_options
             try {

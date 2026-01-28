@@ -200,13 +200,16 @@ export class SearchController {
                     }
                 }
             }
-            // credits: pages + one per successfully completed scrape job (if any)
+            // credits: pages + 1 credit per successfully completed scrape job (if any)
             try {
                 const pageCredits = validatedData.pages ?? 1;
-                let scrapeCredits = validatedData.scrape_options ? completedScrapeCount : 0;
+                let scrapeCredits = 0;
 
-                // Add extra credits for JSON extraction if enabled
-                if (validatedData.scrape_options) {
+                if (validatedData.scrape_options && completedScrapeCount > 0) {
+                    // Base: 1 credit per scraped result
+                    scrapeCredits = completedScrapeCount;
+
+                    // Add extra credits for JSON extraction if enabled
                     const extractJsonCredits = Number.parseInt(process.env.ANYCRAWL_EXTRACT_JSON_CREDITS || "0", 10);
                     const hasJsonOptions = Boolean(validatedData.scrape_options.json_options) &&
                         validatedData.scrape_options.formats?.includes("json");

@@ -88,11 +88,18 @@ export class SchedulerManager {
     }
 
     /**
+     * Check if the scheduler is running
+     */
+    public isSchedulerRunning(): boolean {
+        return this.isRunning && this.schedulerQueue !== null;
+    }
+
+    /**
      * Add or update a scheduled task as a BullMQ repeatable job
      */
     public async addScheduledTask(task: any): Promise<void> {
         if (!this.schedulerQueue) {
-            throw new Error("Scheduler queue not initialized");
+            throw new Error("Scheduler queue not initialized. Make sure to call start() first or set ANYCRAWL_SCHEDULER_ENABLED=true");
         }
 
         try {
@@ -128,6 +135,7 @@ export class SchedulerManager {
 
     /**
      * Remove a scheduled task from BullMQ repeatable jobs
+     * Uses the known jobId pattern for efficient removal
      */
     public async removeScheduledTask(taskUuid: string): Promise<void> {
         if (!this.schedulerQueue) {
@@ -135,15 +143,16 @@ export class SchedulerManager {
         }
 
         try {
-            // Get all job schedulers
-            const schedulers = await this.schedulerQueue.getJobSchedulers();
+            // Use the known jobId pattern instead of iterating through all schedulers
+            const jobId = `scheduled:${taskUuid}`;
+            const jobSchedulers = await this.schedulerQueue.getJobSchedulers();
 
-            // Find and remove the scheduler for this task
-            for (const scheduler of schedulers) {
-                if (scheduler.key.includes(taskUuid)) {
-                    await this.schedulerQueue.removeJobScheduler(scheduler.key);
-                    log.debug(`Removed job scheduler for task ${taskUuid}`);
-                }
+            // Find the job scheduler with matching jobId
+            const schedulerToRemove = jobSchedulers.find(scheduler => scheduler.id === jobId);
+
+            if (schedulerToRemove) {
+                await this.schedulerQueue.removeJobScheduler(schedulerToRemove.key);
+                log.debug(`Removed job scheduler for task ${taskUuid}`);
             }
         } catch (error) {
             log.error(`Failed to remove scheduled task ${taskUuid}: ${error}`);
@@ -185,6 +194,32 @@ export class SchedulerManager {
                 return;
             }
 
+            // Check credits (always enabled, consistent with API behavior)
+            // Only check if ANYCRAWL_API_CREDITS_ENABLED is true
+            const creditsEnabled = process.env.ANYCRAWL_API_CREDITS_ENABLED === "true";
+            if (creditsEnabled && task.minCreditsRequired > 0) {
+                const hasEnoughCredits = await this.checkCredits(task);
+                if (!hasEnoughCredits) {
+                    // Auto-pause the task
+                    await db
+                        .update(schemas.scheduledTasks)
+                        .set({
+                            isPaused: true,
+                            pauseReason: `Auto-paused: Insufficient credits (required: ${task.minCreditsRequired})`,
+                            updatedAt: new Date(),
+                        })
+                        .where(eq(schemas.scheduledTasks.uuid, task.uuid));
+
+                    log.warning(
+                        `Task ${task.name} auto-paused due to insufficient credits (required: ${task.minCreditsRequired})`
+                    );
+
+                    // Remove from BullMQ scheduler
+                    await this.removeScheduledTask(task.uuid);
+                    return;
+                }
+            }
+
             // Check concurrency mode
             if (task.concurrencyMode === "skip") {
                 const runningExecution = await db
@@ -201,6 +236,7 @@ export class SchedulerManager {
                     return;
                 }
             }
+            // For "queue" mode, we don't skip - let it queue up
 
             // Check daily execution limit
             if (task.maxExecutionsPerDay && task.maxExecutionsPerDay > 0) {
@@ -369,6 +405,65 @@ export class SchedulerManager {
         );
 
         return jobId;
+    }
+
+    /**
+     * Check if the user/apiKey has enough credits for the task
+     * Consistent with API CheckCreditsMiddleware behavior
+     */
+    private async checkCredits(task: any): Promise<boolean> {
+        try {
+            const db = await getDB();
+
+            // Get the apiKey or userId from the task
+            const apiKeyId = task.apiKey;
+            const userId = task.userId;
+
+            if (!apiKeyId && !userId) {
+                // No auth info, assume credits are sufficient
+                log.warning(`Task ${task.uuid} has no apiKey or userId, skipping credit check`);
+                return true;
+            }
+
+            // Query the apiKey table for credits
+            let credits = 0;
+            if (apiKeyId) {
+                const apiKeyResult = await db
+                    .select({ credits: schemas.apiKey.credits })
+                    .from(schemas.apiKey)
+                    .where(eq(schemas.apiKey.uuid, apiKeyId))
+                    .limit(1);
+
+                if (apiKeyResult.length > 0) {
+                    credits = apiKeyResult[0].credits || 0;
+                }
+            } else if (userId) {
+                // If only userId is available, find the user's primary apiKey
+                const apiKeyResult = await db
+                    .select({ credits: schemas.apiKey.credits })
+                    .from(schemas.apiKey)
+                    .where(eq(schemas.apiKey.user, userId))
+                    .limit(1);
+
+                if (apiKeyResult.length > 0) {
+                    credits = apiKeyResult[0].credits || 0;
+                }
+            }
+
+            // Check if credits are sufficient (consistent with API: credits <= 0 means insufficient)
+            const hasEnough = credits > 0 && credits >= task.minCreditsRequired;
+            if (!hasEnough) {
+                log.warning(
+                    `Insufficient credits for task ${task.name}: has ${credits}, needs ${task.minCreditsRequired}`
+                );
+            }
+
+            return hasEnough;
+        } catch (error) {
+            log.error(`Error checking credits for task ${task.uuid}: ${error}`);
+            // On error, assume credits are sufficient to avoid blocking tasks
+            return true;
+        }
     }
 
     /**

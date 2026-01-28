@@ -67,6 +67,7 @@ export class CrawlController {
             // Add job to queue
             jobId = await QueueManager.getInstance().addJob(`crawl-${jobPayload.engine}`, jobPayload);
 
+            // Base credit: 1 per crawl job
             req.creditsUsed = defaultPrice + 1;
 
             await createJob({
