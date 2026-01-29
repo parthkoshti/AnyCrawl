@@ -496,6 +496,11 @@ export class EngineConfigurator {
                 // Specify which status codes should NOT trigger session rotation
                 // This allows us to capture these status codes while still rotating for other errors
                 blockedStatusCodes: [], // Only these codes will trigger rotation
+                // Configure session options to rotate after every error
+                sessionOptions: {
+                    ...options.sessionPoolOptions?.sessionOptions,
+                    maxErrorScore: 1, // Rotate sessions after every error
+                },
             };
 
 
