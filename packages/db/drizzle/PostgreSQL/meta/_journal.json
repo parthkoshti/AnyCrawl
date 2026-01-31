@@ -57,6 +57,20 @@
       "when": 1769525738710,
       "tag": "0007_pale_sasquatch",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1769580816183,
+      "tag": "0008_nice_namora",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1769581548240,
+      "tag": "0009_cuddly_titania",
+      "breakpoints": true
     }
   ]
 }

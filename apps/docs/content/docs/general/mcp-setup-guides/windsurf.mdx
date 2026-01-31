@@ -1,0 +1,107 @@
+---
+title: Windsurf
+description: Add web scraping and search to Windsurf with AnyCrawl MCP
+icon: Wind
+---
+
+# MCP Web Search & Scrape in Windsurf
+
+Add web scraping and search capabilities to Windsurf with AnyCrawl MCP.
+
+## Quick Setup
+
+### 1. Get Your API Key
+
+Sign up at [anycrawl.dev](https://anycrawl.dev) and copy your API key from the dashboard.
+
+### 2. Add to Windsurf
+
+Add this to your `~/.codeium/windsurf/mcp_config.json`:
+
+```json
+{
+    "mcpServers": {
+        "anycrawl": {
+            "command": "npx",
+            "args": ["-y", "anycrawl-mcp"],
+            "env": {
+                "ANYCRAWL_API_KEY": "your-api-key"
+            }
+        }
+    }
+}
+```
+
+Replace `your-api-key` with your actual AnyCrawl API key.
+
+### 3. Restart Windsurf
+
+Done! Windsurf can now search and scrape the web.
+
+## Quick Demo
+
+Try these in Windsurf:
+
+**Search the web:**
+
+```
+Search for the latest Tailwind CSS features
+```
+
+**Scrape a page:**
+
+```
+Scrape anycrawl.dev and explain what it does
+```
+
+**Get documentation:**
+
+```
+Find and scrape the Supabase authentication documentation
+```
+
+**Crawl a website:**
+
+```
+Crawl the docs section of nextjs.org and summarize the key concepts
+```
+
+Windsurf's AI agents will automatically use AnyCrawl tools.
+
+## Troubleshooting
+
+### Server not responding
+
+1. Check that your API key is valid
+2. Ensure you have Node.js 18+ installed
+3. Restart Windsurf after making configuration changes
+
+### Permission errors
+
+Make sure npx has permission to execute. You may need to install the package globally:
+
+```bash
+npm install -g anycrawl-mcp
+```
+
+Then update your configuration to use the global package:
+
+```json
+{
+    "mcpServers": {
+        "anycrawl": {
+            "command": "anycrawl-mcp",
+            "env": {
+                "ANYCRAWL_API_KEY": "your-api-key"
+            }
+        }
+    }
+}
+```
+
+## Next Steps
+
+- Learn more about [scraping options](../scrape)
+- Explore [crawling capabilities](../crawl)
+- Check out [search features](../search)
+- See the full [MCP Server documentation](../mcp)

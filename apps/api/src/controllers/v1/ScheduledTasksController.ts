@@ -2,7 +2,7 @@ import { Response } from "express";
 import { z } from "zod";
 import { CronExpressionParser } from "cron-parser";
 import crypto from "crypto";
-import { RequestWithAuth } from "@anycrawl/libs";
+import { RequestWithAuth, estimateTaskCredits } from "@anycrawl/libs";
 import { getDB, schemas, eq, sql } from "@anycrawl/db";
 import { log } from "@anycrawl/libs";
 import { randomUUID } from "crypto";
@@ -11,7 +11,7 @@ import { serializeRecord, serializeRecords } from "../../utils/serializer.js";
 // Validation schemas
 const createTaskSchema = z.object({
     name: z.string().min(1).max(255),
-    description: z.string().optional(),
+    description: z.string().nullable().optional(),
     cron_expression: z.string().refine(
         (val) => {
             try {
@@ -26,11 +26,8 @@ const createTaskSchema = z.object({
     timezone: z.string().default("UTC"),
     task_type: z.enum(["scrape", "crawl", "search", "template"]),
     task_payload: z.object({}).passthrough(),
-    concurrency_mode: z.enum(["skip", "queue", "replace"]).default("skip"),
-    max_concurrent_executions: z.number().int().min(1).default(1),
-    max_executions_per_day: z.number().int().positive().optional(),
-    min_credits_required: z.number().int().min(0).default(100),
-    auto_pause_on_low_credits: z.boolean().default(true),
+    concurrency_mode: z.enum(["skip", "queue"]).default("skip"),
+    max_executions_per_day: z.number().int().positive().nullable().optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.any()).optional(),
     // Webhook integration options
@@ -49,6 +46,26 @@ export class ScheduledTasksController {
             const validatedData = createTaskSchema.parse(req.body);
             const apiKeyId = req.auth?.uuid;
             const userId = req.auth?.user;
+
+            // Calculate min_credits_required automatically
+            let template = null;
+
+            // Fetch template if template_id is provided
+            if (validatedData.task_payload.template_id) {
+                try {
+                    const { getTemplate } = await import("@anycrawl/db");
+                    template = await getTemplate(String(validatedData.task_payload.template_id));
+                } catch (error) {
+                    log.warning(`Failed to fetch template for credit calculation: ${error}`);
+                }
+            }
+
+            // Calculate credits (with or without template)
+            const minCreditsRequired = estimateTaskCredits(
+                validatedData.task_type,
+                validatedData.task_payload,
+                template ? { template } : undefined
+            );
 
             // Calculate next execution time
             const nextExecution = this.calculateNextExecution(
@@ -71,10 +88,8 @@ export class ScheduledTasksController {
                 taskType: validatedData.task_type,
                 taskPayload: validatedData.task_payload,
                 concurrencyMode: validatedData.concurrency_mode,
-                maxConcurrentExecutions: validatedData.max_concurrent_executions,
                 maxExecutionsPerDay: validatedData.max_executions_per_day,
-                minCreditsRequired: validatedData.min_credits_required,
-                autoPauseOnLowCredits: validatedData.auto_pause_on_low_credits,
+                minCreditsRequired: minCreditsRequired,
                 isActive: true,
                 isPaused: false,
                 nextExecutionAt: nextExecution,
@@ -93,17 +108,23 @@ export class ScheduledTasksController {
                 userId
             );
 
-            // Add to BullMQ scheduler
+            // Add to BullMQ scheduler (only if scheduler is running)
             try {
                 const { SchedulerManager } = await import("@anycrawl/scrape");
-                const createdTask = await db
-                    .select()
-                    .from(schemas.scheduledTasks)
-                    .where(eq(schemas.scheduledTasks.uuid, taskUuid))
-                    .limit(1);
+                const scheduler = SchedulerManager.getInstance();
 
-                if (createdTask.length > 0) {
-                    await SchedulerManager.getInstance().addScheduledTask(createdTask[0]);
+                if (scheduler.isSchedulerRunning()) {
+                    const createdTask = await db
+                        .select()
+                        .from(schemas.scheduledTasks)
+                        .where(eq(schemas.scheduledTasks.uuid, taskUuid))
+                        .limit(1);
+
+                    if (createdTask.length > 0) {
+                        await scheduler.addScheduledTask(createdTask[0]);
+                    }
+                } else {
+                    log.warning(`Scheduler is not running. Task created in database but not scheduled. Set ANYCRAWL_SCHEDULER_ENABLED=true to enable scheduling.`);
                 }
             } catch (error) {
                 log.warning(`Failed to add task to scheduler: ${error}`);
@@ -257,19 +278,13 @@ export class ScheduledTasksController {
             if (validatedData.task_type) updateData.taskType = validatedData.task_type;
             if (validatedData.task_payload) updateData.taskPayload = validatedData.task_payload;
             if (validatedData.concurrency_mode) updateData.concurrencyMode = validatedData.concurrency_mode;
-            if (validatedData.max_concurrent_executions) updateData.maxConcurrentExecutions = validatedData.max_concurrent_executions;
             if (validatedData.max_executions_per_day) updateData.maxExecutionsPerDay = validatedData.max_executions_per_day;
-            if (validatedData.min_credits_required !== undefined) updateData.minCreditsRequired = validatedData.min_credits_required;
-            if (validatedData.auto_pause_on_low_credits !== undefined) updateData.autoPauseOnLowCredits = validatedData.auto_pause_on_low_credits;
 
             // Remove snake_case fields
             delete updateData.task_type;
             delete updateData.task_payload;
             delete updateData.concurrency_mode;
-            delete updateData.max_concurrent_executions;
             delete updateData.max_executions_per_day;
-            delete updateData.min_credits_required;
-            delete updateData.auto_pause_on_low_credits;
 
             await db
                 .update(schemas.scheduledTasks)
@@ -287,17 +302,23 @@ export class ScheduledTasksController {
                 );
             }
 
-            // Update in BullMQ scheduler
+            // Update in BullMQ scheduler (only if scheduler is running)
             try {
                 const { SchedulerManager } = await import("@anycrawl/scrape");
-                const updatedTask = await db
-                    .select()
-                    .from(schemas.scheduledTasks)
-                    .where(eq(schemas.scheduledTasks.uuid, taskId))
-                    .limit(1);
+                const scheduler = SchedulerManager.getInstance();
 
-                if (updatedTask.length > 0) {
-                    await SchedulerManager.getInstance().addScheduledTask(updatedTask[0]);
+                if (scheduler.isSchedulerRunning()) {
+                    const updatedTask = await db
+                        .select()
+                        .from(schemas.scheduledTasks)
+                        .where(eq(schemas.scheduledTasks.uuid, taskId))
+                        .limit(1);
+
+                    if (updatedTask.length > 0) {
+                        await scheduler.addScheduledTask(updatedTask[0]);
+                    }
+                } else {
+                    log.warning(`Scheduler is not running. Task updated in database but not rescheduled.`);
                 }
             } catch (error) {
                 log.warning(`Failed to update task in scheduler: ${error}`);
@@ -383,17 +404,23 @@ export class ScheduledTasksController {
                 })
                 .where(whereClause);
 
-            // Add back to BullMQ scheduler
+            // Add back to BullMQ scheduler (only if scheduler is running)
             try {
                 const { SchedulerManager } = await import("@anycrawl/scrape");
-                const resumedTask = await db
-                    .select()
-                    .from(schemas.scheduledTasks)
-                    .where(eq(schemas.scheduledTasks.uuid, taskId))
-                    .limit(1);
+                const scheduler = SchedulerManager.getInstance();
 
-                if (resumedTask.length > 0) {
-                    await SchedulerManager.getInstance().addScheduledTask(resumedTask[0]);
+                if (scheduler.isSchedulerRunning()) {
+                    const resumedTask = await db
+                        .select()
+                        .from(schemas.scheduledTasks)
+                        .where(eq(schemas.scheduledTasks.uuid, taskId))
+                        .limit(1);
+
+                    if (resumedTask.length > 0) {
+                        await scheduler.addScheduledTask(resumedTask[0]);
+                    }
+                } else {
+                    log.warning(`Scheduler is not running. Task resumed in database but not scheduled.`);
                 }
             } catch (error) {
                 log.warning(`Failed to add task to scheduler: ${error}`);

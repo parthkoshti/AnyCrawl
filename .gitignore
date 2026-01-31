@@ -69,3 +69,6 @@ AY_*.md
 /docs/
 
 /templates/
+
+# claude
+.claude/

@@ -1,0 +1,107 @@
+---
+title: Cursor
+description: Add web scraping and search to Cursor with AnyCrawl MCP
+icon: MousePointer
+---
+
+# MCP Web Search & Scrape in Cursor
+
+Add web scraping and search capabilities to Cursor with AnyCrawl MCP.
+
+## Quick Setup
+
+### 1. Get Your API Key
+
+Sign up at [anycrawl.dev](https://anycrawl.dev) and copy your API key from the dashboard.
+
+### 2. Add to Cursor
+
+Open Settings (`Cmd+,` on Mac, `Ctrl+,` on Windows), search for "MCP", and add:
+
+```json
+{
+    "mcpServers": {
+        "anycrawl": {
+            "command": "npx",
+            "args": ["-y", "anycrawl-mcp"],
+            "env": {
+                "ANYCRAWL_API_KEY": "your-api-key"
+            }
+        }
+    }
+}
+```
+
+Replace `your-api-key` with your actual AnyCrawl API key.
+
+### 3. Restart Cursor
+
+Done! You can now search and scrape the web from Cursor.
+
+## Quick Demo
+
+Try these in Cursor Chat (`Cmd+K`):
+
+**Search the web:**
+
+```
+Search for TypeScript best practices 2025
+```
+
+**Scrape a page:**
+
+```
+Scrape anycrawl.dev and tell me what it does
+```
+
+**Get documentation:**
+
+```
+Scrape the React hooks documentation and explain useEffect
+```
+
+**Crawl a website:**
+
+```
+Crawl the blog section of example.com and summarize the articles
+```
+
+Cursor will automatically use AnyCrawl's search, scrape, and crawl tools.
+
+## Troubleshooting
+
+### Server not responding
+
+1. Check that your API key is valid
+2. Ensure you have Node.js 18+ installed
+3. Restart Cursor after making configuration changes
+
+### Permission errors
+
+Make sure npx has permission to execute. You may need to install the package globally:
+
+```bash
+npm install -g anycrawl-mcp
+```
+
+Then update your configuration to use the global package:
+
+```json
+{
+    "mcpServers": {
+        "anycrawl": {
+            "command": "anycrawl-mcp",
+            "env": {
+                "ANYCRAWL_API_KEY": "your-api-key"
+            }
+        }
+    }
+}
+```
+
+## Next Steps
+
+- Learn more about [scraping options](../scrape)
+- Explore [crawling capabilities](../crawl)
+- Check out [search features](../search)
+- See the full [MCP Server documentation](../mcp)

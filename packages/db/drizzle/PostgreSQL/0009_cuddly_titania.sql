@@ -1,0 +1,1 @@
+ALTER TABLE "scheduled_tasks" DROP COLUMN "auto_pause_on_low_credits";

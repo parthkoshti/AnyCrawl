@@ -17,20 +17,52 @@ export default async function Page(props: { params: Promise<{ lang: string; slug
     if (!page) notFound();
 
     const MDXContent = page.data.body;
+    const slug = params.slug.join("/");
+    const pageUrl = `${baseUrl}/${params.lang}/${slug}`;
+
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        headline: page.data.title,
+        description: page.data.description,
+        url: pageUrl,
+        author: {
+            "@type": "Organization",
+            name: "AnyCrawl",
+            url: "https://anycrawl.dev",
+        },
+        publisher: {
+            "@type": "Organization",
+            name: "AnyCrawl",
+            url: "https://anycrawl.dev",
+            logo: {
+                "@type": "ImageObject",
+                url: "https://api.anycrawl.dev/v1/public/storage/file/AnyCrawl.jpeg",
+            },
+        },
+        image: "https://api.anycrawl.dev/v1/public/storage/file/AnyCrawl.jpeg",
+        inLanguage: params.lang === "zh-cn" ? "zh-Hans" : params.lang === "zh-tw" ? "zh-Hant" : "en",
+    };
 
     return (
-        <DocsPage toc={page.data.toc} full={page.data.full}>
-            <DocsTitle>{page.data.title}</DocsTitle>
-            <DocsDescription>{page.data.description}</DocsDescription>
-            <DocsBody>
-                <MDXContent
-                    components={getMDXComponents({
-                        // this allows you to link to other pages with relative file paths
-                        a: createRelativeLink(source, page),
-                    })}
-                />
-            </DocsBody>
-        </DocsPage>
+        <>
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
+            <DocsPage toc={page.data.toc} full={page.data.full}>
+                <DocsTitle>{page.data.title}</DocsTitle>
+                <DocsDescription>{page.data.description}</DocsDescription>
+                <DocsBody>
+                    <MDXContent
+                        components={getMDXComponents({
+                            // this allows you to link to other pages with relative file paths
+                            a: createRelativeLink(source, page),
+                        })}
+                    />
+                </DocsBody>
+            </DocsPage>
+        </>
     );
 }
 
@@ -45,15 +77,48 @@ export async function generateMetadata(props: {
     const page = source.getPage(params.slug, params.lang);
     if (!page) notFound();
 
+    const slug = params.slug ? params.slug.join("/") : "";
+    const pageUrl = `${baseUrl}/${params.lang}${slug ? `/${slug}` : ""}`;
+    const pageDescription = page.data.description || "";
+    const description = pageDescription
+        ? pageDescription.endsWith(".")
+            ? `${pageDescription} Turning web into AI with AnyCrawl.`
+            : `${pageDescription}. Turning web into AI with AnyCrawl.`
+        : "Turning web into AI with AnyCrawl.";
+    const ogImage = "https://api.anycrawl.dev/v1/public/storage/file/AnyCrawl.jpeg";
+
     return {
         title: `${page.data.title} - AnyCrawl Docs`,
-        description: `${page.data.description}. Turning web into AI with AnyCrawl.`,
+        description,
         openGraph: {
             title: page.data.title,
-            description: page.data.description,
+            description: pageDescription || description,
             type: "article",
-            url: `${baseUrl}/${params.lang}${params.slug ? `/${params.slug.join("/")}` : ""}`,
+            url: pageUrl,
             siteName: "AnyCrawl Docs",
+            images: [
+                {
+                    url: ogImage,
+                    width: 1200,
+                    height: 630,
+                    alt: `${page.data.title} - AnyCrawl`,
+                },
+            ],
+        },
+        twitter: {
+            card: "summary_large_image",
+            site: "@AnyCrawl",
+            title: page.data.title,
+            description: pageDescription || description,
+            images: [ogImage],
+        },
+        alternates: {
+            canonical: pageUrl,
+            languages: {
+                en: `${baseUrl}/en${slug ? `/${slug}` : ""}`,
+                "zh-CN": `${baseUrl}/zh-cn${slug ? `/${slug}` : ""}`,
+                "zh-TW": `${baseUrl}/zh-tw${slug ? `/${slug}` : ""}`,
+            },
         },
     };
 }
