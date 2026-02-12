@@ -2,7 +2,7 @@ name: anycrawl
 
 x-common-service: &common-service
     volumes:
-        - ./storage:/usr/src/app/storage
+        - anycrawl-storage:/usr/src/app/storage
 
 x-common-env: &common-env
     NODE_ENV: ${NODE_ENV:-production}
@@ -25,8 +25,8 @@ services:
         environment:
             <<: *common-env
         volumes:
-            - ./storage:/usr/src/app/storage
-            - ./db:/usr/src/app/db
+            - anycrawl-storage:/usr/src/app/storage
+            - anycrawl-db:/usr/src/app/db
         depends_on:
             - redis
 
@@ -40,6 +40,7 @@ services:
             <<: *common-env
         depends_on:
             - redis
+
     scrape-playwright:
         <<: *common-service
         build:
@@ -61,12 +62,14 @@ services:
             <<: *common-env
         depends_on:
             - redis
+
     redis:
         image: redis:7-alpine
         volumes:
             - redis-data:/data
-
         command: redis-server --appendonly yes
 
 volumes:
+    anycrawl-storage:
+    anycrawl-db:
     redis-data:
