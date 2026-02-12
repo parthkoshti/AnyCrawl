@@ -1,8 +1,6 @@
 name: anycrawl
 
 x-common-service: &common-service
-    networks:
-        - anycrawl-network
     volumes:
         - ./storage:/usr/src/app/storage
 
@@ -12,7 +10,7 @@ x-common-env: &common-env
     ANYCRAWL_PROXY_URL: ${ANYCRAWL_PROXY_URL:-}
     ANYCRAWL_IGNORE_SSL_ERROR: ${ANYCRAWL_IGNORE_SSL_ERROR:-true}
     ANYCRAWL_REDIS_URL: ${ANYCRAWL_REDIS_URL:-redis://redis:6379}
-    ANYCRAWL_API_PORT: ${ANYCRAWL_API_PORT:-8089}
+    ANYCRAWL_API_PORT: ${ANYCRAWL_API_PORT:-8080}
     ANYCRAWL_API_AUTH_ENABLED: ${ANYCRAWL_API_AUTH_ENABLED:-false}
     ANYCRAWL_API_DB_TYPE: "sqlite"
     ANYCRAWL_API_DB_CONNECTION: "/usr/src/app/db/database.db"
@@ -26,8 +24,6 @@ services:
             target: api
         environment:
             <<: *common-env
-        ports:
-            - "8089:8089"
         volumes:
             - ./storage:/usr/src/app/storage
             - ./db:/usr/src/app/db
@@ -69,13 +65,8 @@ services:
         image: redis:7-alpine
         volumes:
             - redis-data:/data
-        networks:
-            - anycrawl-network
+
         command: redis-server --appendonly yes
 
 volumes:
     redis-data:
-
-networks:
-    anycrawl-network:
-        driver: bridge
